@@ -91,7 +91,7 @@ def main() -> None:
     # ── Step 4: 导出 CSV ──────────────────────────────────────
     print("\n[4/4] 导出容量配置结果表...")
     cap_csv = str(out / "capacity_optimization_results.csv")
-    df_cap.to_csv(cap_csv, encoding="utf-8-sig", index_label="排名")
+    df_cap.to_csv(cap_csv, encoding="utf-8-sig", index=True, index_label="排名")
     print(f"      已保存: {cap_csv}")
 
     print("\n" + "=" * 64)

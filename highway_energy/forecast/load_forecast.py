@@ -71,6 +71,7 @@ def moving_average_forecast(history: np.ndarray,
                              window: int = 7) -> np.ndarray:
     """
     用最近 window 天同小时均值预测"明天"。
+    预测窗口排除最后一天（y_true），避免信息泄露。
 
     Parameters
     ----------
@@ -81,9 +82,11 @@ def moving_average_forecast(history: np.ndarray,
     -------
     np.ndarray, shape = (T,)
     """
-    if len(history) < window:
-        window = len(history)
-    recent = history[-window:]          # (window, T)
+    if len(history) <= window:
+        window = len(history) - 1
+        if window < 1:
+            window = 1
+    recent = history[-(window + 1):-1]   # 排除最后一天
     return recent.mean(axis=0)          # (T,)
 
 

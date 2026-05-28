@@ -84,6 +84,9 @@ def _heuristic_inner(pv_cap: float,
     给定 (pv_cap, ess_kwh, ess_kw)，运行峰谷套利启发式，
     返回日运营成本等关键指标。
 
+    注意：末端 SOC 通过调整末时段放电强制回归 SOC0，确保不同容量配置
+    之间的日运营成本可比。
+
     Parameters
     ----------
     pv_cap  : 光伏装机容量（kW）
@@ -128,7 +131,6 @@ def _heuristic_inner(pv_cap: float,
         else:
             P_sell[t] = min(-net, P_GRID_MAX)
 
-        # FIX-B1: 防止光伏消纳为负
         consumed = BASE_LOAD[t] + p_ev[t] + p_c - P_sell[t]
         P_pv_use[t]  = max(0.0, min(pv_out[t], consumed))
         P_pv_curt[t] = max(0.0, pv_out[t] - P_pv_use[t])
@@ -139,6 +141,25 @@ def _heuristic_inner(pv_cap: float,
             soc + (ETA_CH * p_c - p_d / ETA_DIS) * DT / ess_kwh,
             SOC_MIN, SOC_MAX,
         ) if ess_kwh > 0 else soc
+
+    # 末端 SOC 回归修正：若最终 SOC > SOC0，补充分电以强制回归 SOC0
+    if soc > SOC0 + 1e-4 and ess_kwh > 0:
+        delta_soc = soc - SOC0
+        p_extra = min(p_dis_max, delta_soc * ess_kwh * ETA_DIS / DT)
+        # 在最后时段加入放电，同时减少购电或增加售电
+        if T > 0:
+            P_dis_arr[-1] += p_extra
+            net_last = BASE_LOAD[-1] + p_ev[-1] - pv_out[-1] + P_ch_arr[-1] - P_dis_arr[-1]
+            if net_last >= 0:
+                P_buy[-1] = min(max(0.0, net_last), P_GRID_MAX)
+                P_sell[-1] = 0.0
+            else:
+                P_buy[-1] = 0.0
+                P_sell[-1] = min(-net_last, P_GRID_MAX)
+            soc = np.clip(
+                soc + (ETA_CH * P_ch_arr[-1] - P_dis_arr[-1] / ETA_DIS) * DT / ess_kwh,
+                SOC_MIN, SOC_MAX,
+            )
 
     cost = (
         np.sum(TOU * P_buy * DT)

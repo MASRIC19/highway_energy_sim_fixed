@@ -80,12 +80,13 @@ def heuristic_schedule() -> dict:
         net_before_extra = BASE_LOAD[t] + P_ev_h[t] - PV_OUT[t] + p_ch - p_dis
         if net_before_extra < 0:     # 光伏富余 → 补充充电
             extra = -net_before_extra
-            extra = min(
-                extra,
+            # 剩余充电空间 = min(功率上限, SOC剩余容量对应的功率)
+            remaining = min(
                 P_CH_MAX - p_ch,
-                max(0.0, (SOC_MAX - soc) * E_CAP / ETA_CH / DT) - p_ch,
+                max(0.0, (SOC_MAX - soc) * E_CAP / ETA_CH / DT),
             )
-            p_ch += max(0.0, extra)
+            extra  = min(extra, remaining)
+            p_ch  += max(0.0, extra)
 
         # ── 功率平衡 ────────────────────────────────────────
         grid = BASE_LOAD[t] + P_ev_h[t] - PV_OUT[t] + p_ch - p_dis

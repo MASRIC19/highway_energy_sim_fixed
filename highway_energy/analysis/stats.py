@@ -67,7 +67,7 @@ def analyze(result: dict, baseline: dict, label: str = "策略") -> dict:
 
     P_ev         = np.array(result.get("P_ev", np.zeros(T)))
     ev_delivered = float(np.sum(P_ev) * DT)
-    ev_fulfill   = _safe_pct(ev_delivered, EV_ENERGY_DEMAND)
+    ev_fulfill   = min(_safe_pct(ev_delivered, EV_ENERGY_DEMAND), 100.0)
 
     energy_cost   = float(np.sum(TOU * P_buy  * DT))
     sell_revenue  = float(np.sum(C_SELL * P_sell * DT))
