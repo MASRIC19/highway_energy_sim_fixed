@@ -4,26 +4,43 @@
 
 ---
 
-## 模块结构
+## 项目结构
 
 ```
 new/
-├── config.py                 # 全局参数与常量
-├── load_forecast.py          # 负荷预测
-├── capacity_optimizer.py     # 容量规划优化
-├── operation_optimizer.py    # 运行调度优化
-├── economic_analysis.py      # 经济性分析
-├── visualization.py          # 可视化
-├── data_export.py            # 数据导出
-├── main.py                   # 主入口
-└── highway_energy_sim_fixed.py  # 原始单文件版（保留参考）
+├── highway_energy/               # Python 包（主代码）
+│   ├── __init__.py
+│   ├── main_dispatch.py          # 调度仿真入口
+│   ├── main_upgrade.py           # 升级模块入口
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── params.py             # 全局参数（单一数据源）
+│   ├── forecast/
+│   │   ├── __init__.py
+│   │   └── load_forecast.py      # 负荷预测
+│   ├── optimizer/
+│   │   ├── __init__.py
+│   │   ├── milp_solver.py        # Gurobi MILP 精确求解
+│   │   ├── heuristic.py          # 启发式调度 + 基线
+│   │   └── capacity.py           # 容量枚举优化
+│   ├── analysis/
+│   │   ├── __init__.py
+│   │   └── stats.py              # 统计分析 + CSV 导出
+│   └── visualization/
+│       ├── __init__.py
+│       ├── style.py              # 共享样式
+│       ├── dispatch_plot.py      # 调度仿真图表
+│       ├── forecast_plot.py      # 负荷预测图表
+│       └── capacity_plot.py      # 容量配置热力图 + Pareto
+├── highway_energy_sim_fixed.py   # 原始单文件版（保留参考）
+└── README.md
 ```
 
 ---
 
 ## 模块说明
 
-### config.py — 全局参数
+### config/params.py — 全局参数
 
 系统所有共享参数与常量，包括：
 
@@ -40,11 +57,11 @@ new/
 | 碳排放 | 排放因子 0.785 kg CO₂/kWh（华东电网） |
 | 枚举范围 | 光伏 300~800kW × 储能 600~1500kWh（共 30 种组合） |
 
-所有其他模块通过 `from config import ...` 引用，参数只定义一次。
+所有其他模块通过 `from highway_energy.config.params import ...` 引用。
 
 ---
 
-### load_forecast.py — 负荷预测
+### forecast/load_forecast.py — 负荷预测
 
 核心函数：
 
@@ -56,7 +73,7 @@ new/
 
 ---
 
-### capacity_optimizer.py — 容量规划优化
+### optimizer/capacity.py — 容量规划优化
 
 外层枚举搜索 + 内层启发式调度的双层优化：
 
@@ -79,7 +96,7 @@ new/
 
 ---
 
-### operation_optimizer.py — 运行调度优化
+### optimizer/milp_solver.py + heuristic.py — 运行调度优化
 
 固定容量下的 24 小时最优调度：
 
@@ -93,7 +110,7 @@ new/
 
 ---
 
-### economic_analysis.py — 经济性分析
+### analysis/stats.py — 经济性分析与数据导出
 
 - **`analyze(result, baseline, label)`** — 对比优化策略与无储能基线，输出：
   - 日购/售电量、峰时购电削减率
@@ -107,9 +124,11 @@ new/
 
 ---
 
-### visualization.py — 可视化
+### visualization/ — 可视化
 
-**原调度仿真图表（`plot_results`）：** 7 子图组合
+**共享样式（style.py）：** 颜色方案、中文字体配置、`apply_ax_style()` 和 `draw_tou_background()` 辅助函数。
+
+**dispatch_plot.py：** 原调度仿真 7 子图组合
 
 1. **功率堆叠图** — 左侧供电侧（购电+光伏+储能放电）vs 右侧用电侧（基础负荷+EV充电+储能充电+售电）
 2. **储能 SOC 曲线** — 24 小时 SOC 变化，标注上下限和初始值
@@ -121,7 +140,7 @@ new/
 
 所有图面标注分时电价背景色（谷=绿、平=蓝、峰=红）。
 
-**升级模块图表：**
+**升级模块图表（forecast_plot.py / capacity_plot.py）：**
 
 | 函数 | 输出 | 说明 |
 |------|------|------|
@@ -131,22 +150,18 @@ new/
 
 ---
 
-### data_export.py — 数据导出
-
-- **`export_table(result, save_path)`** — 导出 24 小时调度明细为 UTF-8 (BOM) CSV，包含 15 列：时刻、电价、光伏出力/消纳/弃光、EV 充电、基础负荷、购电/售电/净购电、储能充电/放电、SOC、时段购电费/售电收益。
-
 ---
 
-### main.py — 主入口
+### 主入口
 
-**用法：**
+两个独立入口脚本，均支持 `--output-dir` 指定输出目录，`--history-days` 控制历史数据天数：
 
 ```bash
 # 原 Gurobi MILP 调度仿真（固定容量）
-python main.py
+python -m highway_energy.main_dispatch --output-dir output
 
 # 升级模块：负荷预测 + 容量枚举 + 多目标评估
-python main.py --upgrade
+python -m highway_energy.main_upgrade --output-dir output --history-days 60
 ```
 
 **流程：**
@@ -174,14 +189,16 @@ Gurobi 不可用时，`--upgrade` 模式使用内置启发式策略，无需 Gur
 
 ## 输出文件
 
+所有输出统一到 `--output-dir` 指定目录（默认 `output/`）。
+
 | 文件 | 来源 | 说明 |
 |------|------|------|
-| highway_energy_sim_output.png | `python main.py` | 原版 7 子图调度仿真 |
-| schedule_table_output.csv | `python main.py` | 24 小时调度明细 |
-| forecast_result.png | `python main.py --upgrade` | 负荷预测对比图 |
-| capacity_heatmap.png | `python main.py --upgrade` | 容量配置热力图 |
-| capacity_pareto.png | `python main.py --upgrade` | Pareto 散点图 |
-| capacity_optimization_results.csv | `python main.py --upgrade` | 30 种方案明细与排名 |
+| dispatch_result.png | `main_dispatch` | 原版 7 子图调度仿真 |
+| schedule_table.csv | `main_dispatch` | 24 小时调度明细 |
+| forecast_result.png | `main_upgrade` | 负荷预测对比图 |
+| capacity_heatmap.png | `main_upgrade` | 容量配置热力图 |
+| capacity_pareto.png | `main_upgrade` | Pareto 散点图 |
+| capacity_optimization_results.csv | `main_upgrade` | 30 种方案明细与排名 |
 
 ---
 
